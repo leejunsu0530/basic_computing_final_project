@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["yt_analysis*"]
+
+[project]
+name = "yt_analysis"
+version = "0.1.0"
+authors = [
+    { name = "leejunsu0530", email = "leejunsu0530@gmail.com" }
+]
+description = "youtube analysis tools"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+
+dependencies = [ # paddlepaddle, torch는 별도 설치
+    "yt-dlp[default,curl_cffi]",
+    "rich",
+    "seaborn",
+    "pandas",
+    "pandas-stubs",
+    "wordcloud"
+]
+
+[project.optional-dependencies]
+colab = ["yt-dlp[deno]"]
+
+# [project.scripts]
+
+[project.urls]
+Homepage = "https://github.com/leejunsu0530/basic_computing_final_project"
+Repository = "https://github.com/leejunsu0530/basic_computing_final_project"
+
+# [tool.mypy]
+# python_version = "3.11"
+# mypy_path = ["typings"]
