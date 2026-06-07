@@ -5,6 +5,22 @@ from pathlib import Path
 from typing import Generator, Union, Literal
 
 
+def safe_filename(filename: str | Path) -> str:
+    """윈도우에서 불가능한 파일명을 전각 문자로 바꿔서 해결"""
+    invalid_to_fullwidth = str.maketrans({
+        '<': '＜',  # U+FF1C
+        '>': '＞',  # U+FF1E
+        ':': '：',  # U+FF1A
+        '"': '＂',  # U+FF02
+        '/': '／',  # U+FF0F
+        '\\': '＼',  # U+FF3C
+        '|': '｜',  # U+FF5C
+        '?': '？',  # U+FF1F
+        '*': '＊',  # U+FF0A
+    })
+    return str(filename).translate(invalid_to_fullwidth)
+
+
 def check_path_format(path: Path, right_type: Literal['file', 'dir']):
     """파일 자리에 폴더 넣거나, 그 반대면 에러. 
     근데 is_ 함수들은 실제로 그 위치에 존재하지 않으면 무조건 false임 > 수정 필요. 
@@ -18,12 +34,16 @@ def check_path_format(path: Path, right_type: Literal['file', 'dir']):
 
 def to_path_file(
     path: Path | str,
-    ext: str | None = None
+    *,
+    ext: str | None = None,
+    safe_filename_: bool = True
 ) -> Path:
     """확장자 강제 지정. zip이 필요한 경우 등에 txt 들어가면 안되니까"""
     if isinstance(path, str):
         path = Path(path)
     check_path_format(path, 'file')
+    if safe_filename_:
+        path = Path(safe_filename(path))
     if not ext:
         return path
     ext = ext.lstrip('.')
@@ -32,7 +52,8 @@ def to_path_file(
     return path
 
 
-def to_path_dir(path: Union[Path, str, None], make_dir: bool = True) -> Path:
+def to_path_dir(path: Union[Path, str, None],
+                *, make_dir: bool = True) -> Path:
     if isinstance(path, str):
         path = Path(path)
         check_path_format(path, 'dir')
@@ -120,7 +141,7 @@ def download_zip(
 
 def write_json(file_path: str | Path, dict_: dict, encoding: str = 'utf-8') -> Path:
     """작성한 파일 경로를 반환"""
-    file_path = to_path_file(file_path, 'json')
+    file_path = to_path_file(file_path, ext='json')
     with file_path.open('w', encoding=encoding) as file:
         json.dump(dict_, file, ensure_ascii=False, indent=4)
     return file_path

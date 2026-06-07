@@ -1,10 +1,21 @@
 from pathlib import Path
 import yt_dlp
-from rich.progress import Progress, track
+from rich.progress import (track,
+                           Progress,
+                           SpinnerColumn,
+                           TextColumn,
+                           BarColumn,
+                           TaskProgressColumn,
+                           TimeElapsedColumn,
+                           TimeRemainingColumn,
+                           MofNCompleteColumn)
 import json
 from typing import Generator, Literal
-from .console import console
-from .utils import to_path_file, to_path_dir, read_json, write_json
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from yt_dlp.extractor.common import _InfoDict  # type: ignore
+from .console import console  # type: ignore
+from .utils import to_path_file, to_path_dir, read_json, write_json  # type: ignore
+import itertools  # type: ignore
 
 
 class YdlDownloader:
@@ -14,16 +25,30 @@ class YdlDownloader:
                  ydl_quiet: bool = False,
                  ):
         """채널을 플리와 동일하게 처리 가능. 최소한 유튜브에서는. 타 플랫폼은 확인 못 해봄"""
-        self.playlists = playlist_or_channel_urls
+        self.playlist_urls = playlist_or_channel_urls
         self.info_json_dir = to_path_dir(info_json_dir)
         self.quiet = ydl_quiet
 
-    def _get_videos_list_from_flat(self, pl_url: str) -> Generator[dict, None, None]:
+    def _get_playlist_info(self, pl_url: str) -> _InfoDict:
+        ydl_opts = {
+            'quiet': self.quiet,
+            'skip_download': True,
+            'noprogress': True,
+            'extract_flat': 'in_playlist',
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            flat_info_dict = ydl.extract_info(pl_url, download=False)
+            flat_info_dict = ydl.sanitize_info(flat_info_dict)
+
+        return flat_info_dict
+
+    def _get_flat_videos_list(self, flat_info_dict: _InfoDict) -> Generator[dict, None, None]:
         """플랫한 info dict를 재귀적으로 순회해 `_type=='url'`인 항목들을 제너레이터로 반환합니다.
         메모리 사용을 줄이기 위해 즉시 yield 합니다.
         """
 
-        def walk(node: dict, parent_info: dict | None = None) -> Generator[dict, None, None]:
+        def walk(node: _InfoDict, parent_info: dict | None = None) -> Generator[dict, None, None]:
             node_type = node.get('_type')
             if parent_info is None:
                 parent_info = {}
@@ -45,34 +70,90 @@ class YdlDownloader:
                 for entry in node.get('entries', []):
                     yield from walk(entry, parent_info)
 
+        yield from walk(flat_info_dict)
+
+    def _write_detailed_video_data(self, video_info_dict: _InfoDict):
+        url = video_info_dict.get('url')
+
         ydl_opts = {
             'quiet': self.quiet,
             'skip_download': True,
             'noprogress': True,
-            'extract_flat': 'in_playlist',
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            flat_info_dict = ydl.extract_info(pl_url, download=False)
-            flat_info_dict = ydl.sanitize_info(flat_info_dict)
+            info_dict = ydl.extract_info(url, download=False)
+            info_dict = ydl.sanitize_info(info_dict)
+            for k in ('formats', 'thumbnails'):
+                if k in info_dict:
+                    del info_dict[k]  # type: ignore
 
-        yield from walk(flat_info_dict)
+        write_json(
+            self.info_json_dir / video_info_dict.get('title'),
+            info_dict,
+        )
+        # return info_dict
 
-    def _get_real_video_data(self, video_info_dict: dict):
-        pass
-
-    def download_playlist_info(self):
+    def download_playlist_info(self, max_workers: int = 30):
         """rich.progress와 위 함수들을 사용해 실제로 영상 데이터를 뽑아오고 저장함. 실제 구동시에는 이 함수만 작동(아마도)"""
-        videos = []
-        for pl_url in track(self.playlists):
-            for idx, video in enumerate(self._get_videos_list_from_flat(pl_url)):
-                # console.print(idx, video.get('title'))
-                videos.append(video)
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+            SpinnerColumn(),
+            console=console,
+            transient=True
 
-        
-        write_json(Path.cwd()/"mrbeast_flat_final.json", videos)
+        ) as progress:
+            # flat_task = progress.add_task('[cyan]각 플레이리스트들의 기본적인 정보들을 가져오는 중...', total=len(self.playlist_urls))
+            pl_flat_list = [self._get_playlist_info(pl_url) for pl_url in track(self.playlist_urls,
+                                                                                description="",
+                                                                                console=console,
+                                                                                transient=True)]
 
+            video_gen_list = [self._get_flat_videos_list(
+                pl_info_dict) for pl_info_dict in pl_flat_list]
+            combined_video_gen = itertools.chain(*video_gen_list)
 
+            video_tasks = list(combined_video_gen)
+            total_videos = len(video_tasks)
+
+            if total_videos == 0:
+                raise ValueError("[error] 추출할 비디오가 없습니다.")
+
+            detail_task = progress.add_task(
+                "각 비디오별 세부 정보 추출중...", total=total_videos)
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # submit 방식으로 작업을 예약
+                worker_futures = {
+                    executor.submit(self._write_detailed_video_data, video): video
+                    for video in video_tasks
+                }
+
+                # 먼저 끝나는 스레드 순서대로 프로그래스 바 갱신
+                for future in as_completed(worker_futures):
+                    try:
+                        future.result()  # 에러 체크용
+                    except Exception as e:  # type: ignore
+                        video_info = worker_futures[future]
+                        console.print(
+                            f"[red]비디오 처리 실패 ([white]title: {video_info.get('title', 'Unknown')}[/white]): {e}[/red]")
+                    finally:
+                        progress.update(detail_task, advance=1)
+
+            # with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            #     for _ in track(
+            #         executor.map(self._write_detailed_video_data,
+            #                     combined_video_gen),
+            #         description="각 비디오별 세부 정보 추출중...",
+            #         console=console,
+            #         transient=True
+            #     ):
+            #         pass
 
     def load_from_zip(self):
         pass
