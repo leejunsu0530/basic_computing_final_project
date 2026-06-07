@@ -149,7 +149,7 @@ class YdlDownloader:
                     video_title = video_info.get('title', 'Unknown')
                     try:
                         future.result()  # 에러 체크용
-                        console.print(f"[green]비디오 처리 성공 ([white]title: {video_title}[/white]): {e}")
+                        console.print(f"[green]비디오 처리 성공 ([white]title: {video_title}[/white])")
                     except Exception as e:  # type: ignore
                         console.print(f"[red]비디오 처리 실패 ([white]title: {video_title}[/white]): {e}")
                     finally:
