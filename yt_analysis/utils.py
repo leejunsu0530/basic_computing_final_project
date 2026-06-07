@@ -36,13 +36,13 @@ def to_path_file(
     path: Path | str,
     *,
     force_ext: str | None = None,
-    safe_filename_: bool = True
+    # safe_filename_: bool = True
 ) -> Path:
     """force_ext: 확장자 강제 지정. zip이 필요한 경우 등에 txt 들어가면 안되니까 넣은 기능이지만, 폴더를 의도했어도 묻지 않고 파일로 만들어버리니 주의."""
     if isinstance(path, str):
         path = Path(path)
-    if safe_filename_:
-        path = Path(safe_filename(path))
+    # if safe_filename_:
+        # path = Path(safe_filename(path))
     if not force_ext: # 확장자 강제 지정 안하면 폴더경로인지 확인 후 반환
         check_path_format(path, 'file')
         return path
@@ -141,7 +141,7 @@ def download_zip(
 
 def write_json(file_path: str | Path, dict_: dict, encoding: str = 'utf-8') -> Path:
     """작성한 파일 경로를 반환"""
-    file_path = to_path_file(file_path, force_ext='json')
+    file_path = to_path_file(file_path)
     with file_path.open('w', encoding=encoding) as file:
         json.dump(dict_, file, ensure_ascii=False, indent=4)
     return file_path
