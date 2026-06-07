@@ -3,13 +3,16 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from yt_analysis.utils import read_json
-import sys
 from pathlib import Path
 from yt_analysis.simple_ydl_downloader import YdlDownloader
 from yt_analysis.utils import download_zip
 from yt_analysis.codes_from_class import check_positive, generate_wordcloud
 from rich.pretty import pprint
+# from yt_analysis import console
+from rich.console import Console
+from rich.markdown import Markdown
 
+console = Console()
 
 json_path = Path('yt_dlp_jsons')
 json_path.mkdir(parents=True, exist_ok=True)
@@ -38,17 +41,20 @@ df_khaby = pd.DataFrame(khaby_data)
 
 print(df_mrbeast.head())
 
-# 분석 목표
-# 틱톡과 유튜브의 1위 채널들을 분석하여, 각 플랫폼에서 사람들에게 선호되는 성향(영상 길이, 영상 제목의 방향성 등)을 비교한다
+console.print(Markdown(
+    """# 분석 목표
+- 틱톡과 유튜브의 1위 채널들을 분석하여, 각 플랫폼에서 사람들에게 선호되는 성향(영상 길이, 영상 제목의 방향성 등)을 비교한다
 
 # 평가 기준
-# 심층적인 분석
-# 예를 들어, 단순히 영상 제목이 부정적인지 긍정적인지를 비교하는 것에서 끝나는 게 아니라, 왜 이런 결과가 나오는지 가설 세우고 검증. > 높은 점수
-
+- 심층적인 분석
+    - 예를 들어, 단순히 영상 제목이 부정적인지 긍정적인지를 비교하는 것에서 끝나는 게 아니라, 왜 이런 결과가 나오는지 가설 세우고 검증. > 높은 점수
+"""))
 
 # 1. 둘의 간략한 채널 데이터 비교(구독자 수, 평균 조회수, 채널 운영 기간 등)
+console.print(Markdown("# 1. 둘의 간략한 채널 데이터 비교(구독자 수, 평균 조회수, 채널 운영 기간 등)"))
 mrbeast_channel_info = read_json(json_path / "mrbeast.json")
 khaby_channel_info = read_json(json_path / "khaby.lame.json")
+
 
 def channel_summary(channel_info, df, name="channel"):
     subs = channel_info.get('channel_follower_count') or channel_info.get(
@@ -83,6 +89,10 @@ channel_summary(khaby_channel_info, df_khaby, name='Khaby')
 
 
 # 2. 두 채널 운영자의 영상을 각각 업로드 시간-조회수 스케터 플롯으로 나타내기(둘의 그래프의 축 범위는 동일하게)
+console.print(
+    Markdown("# 2. 두 채널 운영자의 영상을 각각 업로드 시간-조회수 스케터 플롯으로 나타내기(둘의 그래프의 축 범위는 동일하게)"))
+
+
 def plot_time_vs_views(df, ax, title):
     if 'upload_date' not in df.columns or 'view_count' not in df.columns:
         ax.text(0.5, 0.5, 'data not available', ha='center')
@@ -106,6 +116,10 @@ plt.show()
 
 
 # 3. 둘의 영상 제목을 각각 워드 클라우드로 나타내기 - 어떠한 단어가 주로 사용되는지 보기 위해
+console.print(
+    Markdown("# 3. 둘의 영상 제목을 각각 워드 클라우드로 나타내기 - 어떠한 단어가 주로 사용되는지 보기 위해"))
+
+
 def make_title_df_for_wordcloud(df):
     tmp = df[['title']].dropna().rename(columns={'title': 'text'})
     return tmp
@@ -119,6 +133,10 @@ generate_wordcloud(make_wc_df, text_column='text')
 
 
 # 4. 둘의 영상 제목들을 부정적인지 여부를 구한 후, 값들을 df에 벨류로 추가하고 그 평균과 중앙값을 내서 그래프에 그리기 - 부정적인 제목이 많은지 긍정적인 제목이 많은지
+console.print(Markdown(
+    "# 4. 둘의 영상 제목들을 부정적인지 여부를 구한 후, 값들을 df에 벨류로 추가하고 그 평균과 중앙값을 내서 그래프에 그리기 - 부정적인 제목이 많은지 긍정적인 제목이 많은지"))
+
+
 def add_polarity_column(df):
     def polarity_of(text):
         try:
@@ -151,6 +169,10 @@ polarity_summary(df_khaby, 'Khaby')
 
 
 # 5. 두 채널 운영자의 각 영상 제목의 긍정/부정치와 조회수의 상관관계를 스케터 플롯으로 그리기(둘의 그래프의 축 범위는 동일하게)
+console.print(Markdown(
+    "# 5. 두 채널 운영자의 각 영상 제목의 긍정/부정치와 조회수의 상관관계를 스케터 플롯으로 그리기(둘의 그래프의 축 범위는 동일하게)"))
+
+
 def plot_polarity_vs_views(df, ax, title):
     if 'title_polarity' not in df.columns or 'view_count' not in df.columns:
         ax.text(0.5, 0.5, 'data not available', ha='center')
@@ -170,8 +192,3 @@ plot_polarity_vs_views(df_mrbeast, axes[0], 'MrBeast polarity vs views')
 plot_polarity_vs_views(df_khaby, axes[1], 'Khaby polarity vs views')
 plt.tight_layout()
 plt.show()
-
-
-# (generate_wordcloud() 사용)
-
-# (check_positive() 사용)
