@@ -90,7 +90,7 @@ class YdlDownloader:
                     del info_dict[k]  # type: ignore
 
         write_json(
-            self.info_json_dir / video_info_dict.get('title'),
+            self.info_json_dir / f"{video_info_dict.get('title')}.json",
             info_dict,
         )
         # return info_dict
