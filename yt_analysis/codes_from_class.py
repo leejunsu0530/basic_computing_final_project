@@ -26,7 +26,11 @@ def generate_wordcloud(df, text_column='text', font_path=None,
     plt.show()
 
 
-def check_positive(*text: str) -> TextBlob:
-    """.sentiment의 polarity가 1에 가까우면 긍정적, 반대면 부정적 문장"""
+def check_positive(text: str) -> TextBlob:
+    """Return a TextBlob for the given text.
+
+    .sentiment.polarity is close to 1 for positive text and
+    close to -1 for negative text.
+    """
     blob = TextBlob(text)
     return blob
