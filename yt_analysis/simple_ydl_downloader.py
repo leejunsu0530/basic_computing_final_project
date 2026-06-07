@@ -12,7 +12,8 @@ from rich.progress import (track,
 import json
 from typing import Generator, Literal
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from yt_dlp.extractor.common import _InfoDict  # type: ignore
+# from yt_dlp.extractor.common import _InfoDict  # type: ignore
+from .type import _InfoDict  # type: ignore
 from .console import console  # type: ignore
 from .utils import to_path_file, to_path_dir, read_json, write_json  # type: ignore
 import itertools  # type: ignore
