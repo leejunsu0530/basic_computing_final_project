@@ -1,120 +1,139 @@
 import requests
+import json
 import zipfile
 from pathlib import Path
-
-# URL = "https://github.com/leejunsu0530/basic_computing_team/raw/main/datasets/datasets.zip"
-# zip_path = Path("/content/datasets.zip")
-# extract_path = Path("/content/datasets")
+from typing import Generator, Union, Literal
 
 
-def to_path(path: Path | str) -> Path:
+def check_path_format(path: Path, right_type: Literal['file', 'dir']):
+    """파일 자리에 폴더 넣거나, 그 반대면 에러. 
+    근데 is_ 함수들은 실제로 그 위치에 존재하지 않으면 무조건 false임 > 수정 필요. 
+    to path 함수들에 넣을거임"""
+
+    if right_type == 'file' and not path.suffix:
+        raise TypeError(f"해당 위치의 변수에는 파일 경로가 와야 하지만, 디렉토리 경로가 입력되었습니다: {path}")
+    if right_type == 'dir' and path.suffix:
+        raise TypeError(f"해당 위치의 변수에는 디렉토리 경로가 와야 하지만, 파일 경로가 입력되었습니다: {path}")
+
+
+def to_path_file(
+    path: Path | str,
+    ext: str | None = None
+) -> Path:
+    """확장자 강제 지정. zip이 필요한 경우 등에 txt 들어가면 안되니까"""
     if isinstance(path, str):
-        return Path(path)
-    else:
+        path = Path(path)
+    check_path_format(path, 'file')
+    if not ext:
         return path
+    ext = ext.lstrip('.')
+    if ext not in path.suffix:
+        path = path.with_name(path.name + f'.{ext}')
+    return path
+
+
+def to_path_dir(path: Union[Path, str, None], make_dir: bool = True) -> Path:
+    if isinstance(path, str):
+        path = Path(path)
+        check_path_format(path, 'dir')
+        if make_dir:
+            path.mkdir(parents=True, exist_ok=True)
+    elif path is None:
+        path = Path.cwd()
+
+    return path
 
 
 def download_zip(
     url: str,
-    extract_path: Path | str,
+    extract_dir: Union[Path, str, None],
     *,
-    zip_path: Path | str = Path.cwd(),
-    delete_zip: bool = True
-):
+    zip_dir: Union[Path, str, None] = None,
+    zip_name: str = "downloaded_file.zip",
+    delete_zip: bool = True,
+    timeout: int = 10
+) -> Generator[Path, None, None]:
     """
     주로 colab에서 외부 파일 가져오는 용도.
+
     Params:
-        url: zip 파일의 위치. ex) https://github.com/leejunsu0530/basic_computing_team/raw/main/datasets/datasets.zip
-        extract_path: 압축 해제할 경로
-        zip_path: zip 파일을 다운로드할 경로. 입력 안하면 cwd에 다운로드 후 삭제
-        delete_zip: 압축 해제 후 지울지 여부
-
-    예외처리와 반환 부분 수정 필요
+        url: zip 파일의 위치.
+        extract_dir: 최종적으로 압축 해제할 경로. None일 경우 cwd.
+        zip_dir: zip 파일을 다운로드할 디렉토리. None일 경우 cwd에 지정
+        zip_name: zip 파일의 이름.
+        delete_zip: 압축 해제 후 다운로드한 zip 파일 삭제 여부.
+        timeout: requests 요청 제한 시간 (초). 기본값 10초.
     """
-    r = requests.get(url)
-    extract_path = to_path(extract_path)
-    zip_path = to_path(zip_path)
-
-    with zip_path.open("wb") as f:
-        f.write(r.content)
-
-    # 폴더 없으면 생성
-    extract_path.mkdir(parents=True, exist_ok=True)
-
-    # 압축해제
-    with zipfile.ZipFile(str(zip_path), 'r') as zip_ref:
-        zip_ref.extractall(extract_path)
-
-    if delete_zip:
-        zip_path.unlink()
-
-    return extract_path.iterdir()
-
-
-def download_zip2(
-    url: str,
-    extract_path: Path | str,
-    zip_path: Path | str = Path.cwd(),
-    delete_zip: bool = True
-):
-    """
-    주로 colab에서 외부 파일 가져오는 용도
-    Params:
-        url: zip 파일의 위치. ex) https://github.com/leejunsu0530/basic_computing_team/raw/main/datasets/datasets.zip
-        extract_path: 압축 해제할 경로
-        zip_path: zip 파일을 다운로드할 경로 또는 파일명. 입력 안하면 cwd에 다운로드 후 삭제
-        delete_zip: 압축 해제 후 지울지 여부
-    """
-    if not isinstance(url, str) or not url.strip():
-        raise ValueError("url must be a non-empty string")
-
-    extract_path = to_path(extract_path)
-    zip_path = to_path(zip_path)
-
-    if zip_path.exists() and zip_path.is_dir():
-        filename = Path(url).name or "downloaded.zip"
-        zip_path = zip_path / filename
+    extract_dir = to_path_dir(extract_dir)
+    zip_path = to_path_dir(zip_dir) / zip_name
 
     try:
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as exc:
-        raise RuntimeError(
-            f"Failed to download zip from {url}: {exc}") from exc
+        # 1. 파일 다운로드 (timeout 추가)
+        print(f"Downloading from {url}...")
+        r = requests.get(url, timeout=timeout)
+        r.raise_for_status()  # 4xx, 5xx HTTP 에러 발생 시 예외 발생
 
-    if not response.content:
-        raise RuntimeError(f"Downloaded file from {url} is empty")
-
-    try:
-        zip_path.parent.mkdir(parents=True, exist_ok=True)
         with zip_path.open("wb") as f:
-            f.write(response.content)
-    except OSError as exc:
-        raise RuntimeError(
-            f"Failed to write downloaded zip to {zip_path}: {exc}") from exc
+            f.write(r.content)
+
+    except requests.exceptions.Timeout:
+        print(f"[Error] 다운로드 시간이 초과되었습니다. ({timeout}초)")
+        raise
+    except requests.exceptions.HTTPError as e:
+        print(f"[Error] HTTP 에러가 발생했습니다: {e}")
+        raise
+    except requests.exceptions.RequestException as e:
+        print(f"[Error] 네트워크 요청 중 오류가 발생했습니다: {e}")
+        raise
+    except IOError as e:
+        print(f"[Error] 파일 저장 중 입출력 오류가 발생했습니다: {e}")
+        raise
 
     try:
-        extract_path.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        raise RuntimeError(
-            f"Failed to create extract directory {extract_path}: {exc}") from exc
+        # 2. 압축 해제
+        print(f"Extracting to {extract_dir}...")
 
-    extracted = False
-    try:
-        with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            zip_ref.extractall(extract_path)
-        extracted = True
-    except zipfile.BadZipFile as exc:
-        raise RuntimeError(
-            f"Downloaded file is not a valid zip archive: {zip_path}") from exc
-    except OSError as exc:
-        raise RuntimeError(
-            f"Failed to extract zip file {zip_path}: {exc}") from exc
-    finally:
-        if delete_zip and extracted and zip_path.exists():
-            try:
-                zip_path.unlink()
-            except OSError:
-                pass
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_dir)
 
-    return extract_path
+    except zipfile.BadZipFile:
+        print("[Error] 올바르지 않은 zip 파일이거나 파일이 손상되었습니다.")
+        # 에러 발생 시 쓰레기 파일이 남지 않도록 지워줍니다.
+        if zip_path.exists():
+            zip_path.unlink()
+        raise
+    except Exception as e:
+        print(f"[Error] 압축 해제 중 예상치 못한 오류가 발생했습니다: {e}")
+        raise
+
+    # 3. 임시 파일 삭제
+    if delete_zip and zip_path.exists():
+        try:
+            zip_path.unlink()
+            print("Temporary zip file deleted.")
+        except IOError as e:
+            print(f"[Warning] 임시 zip 파일 삭제 실패: {e}")
+
+    print("Success!")
+    return extract_dir.iterdir()
+
+
+def write_json(file_path: str | Path, dict_: dict, encoding: str = 'utf-8') -> Path:
+    """작성한 파일 경로를 반환"""
+    file_path = to_path_file(file_path, 'json')
+    with file_path.open('w', encoding=encoding) as file:
+        json.dump(dict_, file, ensure_ascii=False, indent=4)
+    return file_path
+
+
+def read_json(file_path: str | Path, encoding: str = 'utf-8') -> dict:
+    """
+    파일이 없을 시 FileNotFoundError 발생
+    """
+    file_path = to_path_file(file_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"주어진 경로 {file_path}에 파일이 없습니다.")
+    else:
+        with file_path.open('r', encoding=encoding) as file:
+            dict_: dict = json.load(file)
+        return dict_
