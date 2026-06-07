@@ -140,8 +140,8 @@ def download_zip(
 
 
 def write_json(file_path: str | Path, dict_: dict, encoding: str = 'utf-8') -> Path:
-    """작성한 파일 경로를 반환"""
-    file_path = to_path_file(file_path)
+    """작성한 파일 경로를 반환. 폴더여도 강제로 해당 이름의 json으로 변환하니 주의"""
+    file_path = to_path_file(file_path, force_ext='.json')
     with file_path.open('w', encoding=encoding) as file:
         json.dump(dict_, file, ensure_ascii=False, indent=4)
     return file_path
