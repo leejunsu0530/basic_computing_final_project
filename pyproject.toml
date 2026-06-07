@@ -21,7 +21,9 @@ dependencies = [ # paddlepaddle, torch는 별도 설치
     "seaborn",
     "pandas",
     "pandas-stubs",
-    "wordcloud"
+    "wordcloud",
+    "textblob",
+    'nltk'
 ]
 
 [project.optional-dependencies]

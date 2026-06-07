@@ -219,3 +219,4 @@ __marimo__/
 
 # 사용자 정의
 .test/
+yt_dlp_jsons/
